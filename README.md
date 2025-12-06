@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # NTIL REBUS-GROK: Complete Deployable System
 
 This is the fully integrated, production-ready codebase. Every file is complete and functional.
@@ -57,3 +58,6 @@ make test
 **5.0.0** - Production Ready
 
 **Mission:** Real-time diplomatic misinterpretation prevention through AI-powered analysis.
+=======
+# STARKTANK
+>>>>>>> 200693e3f7a31ba013a8a5bcc2d22fb16058b1b8
