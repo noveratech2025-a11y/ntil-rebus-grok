@@ -12,7 +12,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  REPO_OWNER: ${{ github.repository_owner }}
+  REPO_OWNER: noveratech2025-a11y
   REPO_NAME: ntil-rebus-grok
 
 jobs:
