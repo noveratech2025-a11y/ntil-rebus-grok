@@ -1,11 +1,11 @@
-package com.ntil.rebus.models;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.copackage com.ntil.rebus.models;
+nstraints.Size;
 import java.time.Instant;
 import java.util.Map;
 

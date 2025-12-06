@@ -20,6 +20,18 @@ case $ENVIRONMENT in
     docker pull $IMAGE_BACKEND
     docker pull $IMAGE_FRONTEND
     
+    # Generate SBOM with Syft
+    echo "📋 Generating Software Bill of Materials..."
+    syft "$IMAGE_BACKEND" -o cyclonedx > sbom-backend.xml
+    syft "$IMAGE_FRONTEND" -o cyclonedx > sbom-frontend.xml
+    echo "✅ SBOM generated: sbom-backend.xml, sbom-frontend.xml"
+    
+    # Sign images with Cosign
+    echo "🔐 Signing container images..."
+    cosign sign --key cosign.key "$IMAGE_BACKEND"
+    cosign sign --key cosign.key "$IMAGE_FRONTEND"
+    echo "✅ Container images signed"
+    
     # Update services using docker-compose
     docker compose -f deploy/docker-compose.yml up -d
     
@@ -37,6 +49,18 @@ case $ENVIRONMENT in
       echo "❌ kubectl not found. Install Kubernetes CLI tools."
       exit 1
     fi
+    
+    # Generate SBOM with Syft
+    echo "📋 Generating Software Bill of Materials..."
+    syft "$IMAGE_BACKEND" -o cyclonedx > sbom-backend.xml
+    syft "$IMAGE_FRONTEND" -o cyclonedx > sbom-frontend.xml
+    echo "✅ SBOM generated: sbom-backend.xml, sbom-frontend.xml"
+    
+    # Sign images with Cosign
+    echo "🔐 Signing container images..."
+    cosign sign --key cosign.key "$IMAGE_BACKEND"
+    cosign sign --key cosign.key "$IMAGE_FRONTEND"
+    echo "✅ Container images signed"
     
     # Apply Kubernetes manifests
     echo "Applying Kubernetes manifests..."

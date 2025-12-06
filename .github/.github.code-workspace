@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../.vscode"
+		},
+		{
+			"path": "../backend"
+		},
+		{
+			"path": "../deploy"
+		},
+		{
+			"path": "../docs"
+		},
+		{
+			"path": "../frontend"
+		}
+	]
+}
