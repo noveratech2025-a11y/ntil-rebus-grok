@@ -1,0 +1,211 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rebus
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rebus-config
+  namespace: rebus
+data:
+  SPRING_PROFILES_ACTIVE: "production"
+  SERVER_PORT: "8080"
+  LOG_LEVEL: "INFO"
+  GROK_API_ENDPOINT: "https://api.x.ai/v1"
+  STARLINK_ENABLED: "false"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rebus-backend
+  namespace: rebus
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rebus-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: rebus-backend
+    spec:
+      serviceAccountName: rebus-backend
+      containers:
+      - name: backend
+        image: ghcr.io/YOUR_USERNAME/ntil-rebus-grok/backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: rebus-config
+        env:
+        - name: DB_HOST
+          value: postgres-service
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: rebus-secrets
+              key: db-name
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: rebus-secrets
+              key: db-username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rebus-secrets
+              key: db-password
+        - name: REDIS_HOST
+          value: redis-service
+        - name: GROK_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rebus-secrets
+              key: grok-api-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rebus-backend-service
+  namespace: rebus
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: rebus-backend
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rebus-backend-hpa
+  namespace: rebus
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rebus-backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rebus-frontend
+  namespace: rebus
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rebus-frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: rebus-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/YOUR_USERNAME/ntil-rebus-grok/frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: REACT_APP_API_URL
+          value: http://rebus-backend-service:8080
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rebus-frontend-service
+  namespace: rebus
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app: rebus-frontend
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rebus-backend
+  namespace: rebus
