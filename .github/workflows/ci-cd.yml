@@ -35,12 +35,11 @@ jobs:
       - name: Build with Maven
         working-directory: ./backend
         run: |
-          chmod +x mvnw
-          ./mvnw clean package -DskipTests
+          mvn clean package -DskipTests
 
       - name: Run Tests
         working-directory: ./backend
-        run: ./mvnw verify
+        run: mvn verify
 
       - name: Log in to Container Registry
         if: github.event_name != 'pull_request'
