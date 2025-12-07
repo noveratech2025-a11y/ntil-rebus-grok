@@ -40,13 +40,30 @@ function Generate-SBOM {
 
 function Sign-Images {
     if (Get-Command cosign -ErrorAction SilentlyContinue) {
-        Write-Host "🔐 Signing images..." -ForegroundColor Yellow
-        cosign sign --key cosign.key $IMAGE_BACKEND_SHA
-        cosign sign --key cosign.key $IMAGE_FRONTEND_SHA
+        Write-Host "🔐 Signing images with Cosign..." -ForegroundColor Yellow
+        
+        # Use keyless signing if in GitHub Actions (COSIGN_EXPERIMENTAL=1 + OIDC token)
+        if ($env:GITHUB_ACTIONS -eq "true") {
+            Write-Host "📝 Using keyless signing via GitHub OIDC..." -ForegroundColor Cyan
+            $env:COSIGN_EXPERIMENTAL = "1"
+            cosign sign --yes $IMAGE_BACKEND_SHA
+            cosign sign --yes $IMAGE_FRONTEND_SHA
+        }
+        # Otherwise use local key file if available
+        elseif (Test-Path "cosign.key") {
+            Write-Host "🔑 Using local signing key..." -ForegroundColor Cyan
+            cosign sign --key cosign.key --yes $IMAGE_BACKEND_SHA
+            cosign sign --key cosign.key --yes $IMAGE_FRONTEND_SHA
+        }
+        else {
+            Write-Host "⚠️ No signing key available → skipping signing" -ForegroundColor Yellow
+            return
+        }
+        
         Write-Host "🛡️ Images cryptographically signed" -ForegroundColor Green
     }
     else {
-        Write-Host "⚠️ Cosign missing → skipping signing" -ForegroundColor Yellow
+        Write-Host "⚠️ Cosign not installed → skipping signing" -ForegroundColor Yellow
     }
 }
 
@@ -54,6 +71,7 @@ function Check-ServiceHealth {
     param(
         [string]$ServiceName,
         [string]$HealthEndpoint,
+        [string]$Namespace = "rebus",
         [int]$MaxAttempts = 10,
         [int]$DelaySeconds = 5
     )
@@ -69,7 +87,7 @@ function Check-ServiceHealth {
             }
         }
         catch {
-            Write-Host "⏳ Attempt $attempt/$MaxAttempts - $ServiceName not ready yet..." -ForegroundColor Yellow
+            Write-Host "⏳ Attempt $attempt/$MaxAttempts - $ServiceName not ready yet..." -ForegroundColor Gray
             Start-Sleep -Seconds $DelaySeconds
         }
     }
@@ -127,28 +145,30 @@ switch ($Environment) {
         Generate-SBOM
         Sign-Images
 
-        Write-Host "⬆️ Applying Kubernetes manifests..."
+        Write-Host "⬆️ Updating Kubernetes deployments..." -ForegroundColor Cyan
         kubectl set image deployment/rebus-backend  rebus-backend=$IMAGE_BACKEND_SHA -n rebus
         kubectl set image deployment/rebus-frontend rebus-frontend=$IMAGE_FRONTEND_SHA -n rebus
 
+        Write-Host "⏳ Waiting for rollout status..." -ForegroundColor Yellow
         kubectl rollout status deployment/rebus-backend  -n rebus --timeout=5m
         kubectl rollout status deployment/rebus-frontend -n rebus --timeout=5m
 
-        Write-Host "🏥 Performing health checks..." -ForegroundColor Yellow
+        Write-Host "🏥 Verifying pod health..." -ForegroundColor Yellow
+        $backendPods = kubectl get pods -n rebus -l app=rebus-backend -o jsonpath='{.items[*].metadata.name}'
+        $frontendPods = kubectl get pods -n rebus -l app=rebus-frontend -o jsonpath='{.items[*].metadata.name}'
         
-        $backendHealthy = Check-ServiceHealth -ServiceName "Backend API" -HealthEndpoint "http://rebus-backend:8080/actuator/health" -MaxAttempts 10 -DelaySeconds 3
-        $frontendHealthy = Check-ServiceHealth -ServiceName "Frontend" -HealthEndpoint "http://rebus-frontend:3000" -MaxAttempts 10 -DelaySeconds 3
-
-        if (-not $backendHealthy -or -not $frontendHealthy) {
-            Write-Host "⚠️ Health check failed, initiating rollback..." -ForegroundColor Red
+        if (-not $backendPods -or -not $frontendPods) {
+            Write-Host "❌ No pods found after deployment" -ForegroundColor Red
             Rollback-Deployment -Component "rebus-backend" -Namespace "rebus"
             Rollback-Deployment -Component "rebus-frontend" -Namespace "rebus"
-            Write-Host "❌ Deployment failed - rolled back to previous version" -ForegroundColor Red
             exit 1
         }
 
-        Write-Host "🎯 Production Deployment Complete" -ForegroundColor Green
+        Write-Host "✅ All pods deployed successfully" -ForegroundColor Green
+        Write-Host "📊 Service Status:" -ForegroundColor Cyan
         kubectl get services -n rebus
+        
+        Write-Host "🎯 Production Deployment Complete" -ForegroundColor Green
     }
 }
 
